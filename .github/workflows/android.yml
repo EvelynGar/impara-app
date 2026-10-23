@@ -14,6 +14,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Descomprimir proyecto (si se subió como .zip)
+        run: |
+          if [ ! -d app ] && ls *.zip >/dev/null 2>&1; then
+            unzip -o -q "$(ls *.zip | head -1)" -d _zip
+            SRC=$(dirname "$(find _zip -name settings.gradle.kts | head -1)")
+            cp -rn "$SRC"/. .
+            rm -rf _zip
+          fi
+          ls -la
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
