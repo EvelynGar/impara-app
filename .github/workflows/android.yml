@@ -1,0 +1,48 @@
+name: Compilar APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compilar
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon -PbuildNumber=${{ github.run_number }} assembleRelease assembleDebug
+
+      - name: Preparar archivos
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/ImparaAcademy-1.0.${{ github.run_number }}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/ImparaAcademy-1.0.${{ github.run_number }}-debug.apk"
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImparaAcademy-APK-${{ github.run_number }}
+          path: dist/*.apk
+
+      - name: Publicar en Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v1.0.${{ github.run_number }}"
+          gh release create "$TAG" dist/*.apk \
+            --title "Impara Academy 1.0.${{ github.run_number }}" \
+            --notes "APK de prueba generado automáticamente. Instala ImparaAcademy-1.0.${{ github.run_number }}.apk en tu celular Android."
