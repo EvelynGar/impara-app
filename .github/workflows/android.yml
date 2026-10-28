@@ -16,10 +16,10 @@ jobs:
 
       - name: Descomprimir proyecto (si se subió como .zip)
         run: |
-          if [ ! -d app ] && ls *.zip >/dev/null 2>&1; then
+          if ls *.zip >/dev/null 2>&1; then
             unzip -o -q "$(ls *.zip | head -1)" -d _zip
             SRC=$(dirname "$(find _zip -name settings.gradle.kts | head -1)")
-            cp -rn "$SRC"/. .
+            cp -r "$SRC"/app "$SRC"/gradle "$SRC"/*.kts "$SRC"/gradle.properties "$SRC"/gradlew . 2>/dev/null || true
             rm -rf _zip
           fi
           ls -la
@@ -31,28 +31,48 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Preparar llave de carga de Google Play
+        env:
+          KS: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KS" ]; then
+            echo "$KS" | base64 -d > "$RUNNER_TEMP/upload.jks"
+            echo "UPLOAD_KEYSTORE_FILE=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+            echo "Llave de carga lista."
+          else
+            echo "Sin llave de carga: el APK se firma con la llave de prueba."
+          fi
+
       - name: Compilar
+        env:
+          UPLOAD_STORE_PASSWORD: ${{ secrets.UPLOAD_STORE_PASSWORD }}
+          UPLOAD_KEY_ALIAS: ${{ secrets.UPLOAD_KEY_ALIAS }}
+          UPLOAD_KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon -PbuildNumber=${{ github.run_number }} assembleRelease assembleDebug
+          ./gradlew --no-daemon -PbuildNumber=${{ github.run_number }} assembleRelease bundleRelease assembleDebug
 
       - name: Preparar archivos
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk "dist/ImparaAcademy-1.0.${{ github.run_number }}.apk"
-          cp app/build/outputs/apk/debug/app-debug.apk "dist/ImparaAcademy-1.0.${{ github.run_number }}-debug.apk"
+          N=${{ github.run_number }}
+          cp app/build/outputs/apk/release/app-release.apk "dist/ImparaAcademy-1.0.$N.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/ImparaAcademy-1.0.$N-debug.apk"
+          if [ -n "$UPLOAD_KEYSTORE_FILE" ]; then
+            cp app/build/outputs/bundle/release/app-release.aab "dist/ImparaAcademy-1.0.$N-PlayStore.aab"
+          fi
           ls -la dist
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ImparaAcademy-APK-${{ github.run_number }}
-          path: dist/*.apk
+          name: ImparaAcademy-${{ github.run_number }}
+          path: dist/*
 
       - name: Publicar en Releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="v1.0.${{ github.run_number }}"
-          gh release create "$TAG" dist/*.apk \
+          gh release create "$TAG" dist/* \
             --title "Impara Academy 1.0.${{ github.run_number }}" \
-            --notes "APK de prueba generado automáticamente. Instala ImparaAcademy-1.0.${{ github.run_number }}.apk en tu celular Android."
+            --notes "APK para instalar en el celular y .aab para subir a Google Play Console."
